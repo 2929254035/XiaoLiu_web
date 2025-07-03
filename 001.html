@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>输入验证页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 350px;
+            text-align: center;
+        }
+        .input-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .hidden-content {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>请输入访问密码</h2>
+        <div class="input-group">
+            <input type="password" id="passwordInput" placeholder="输入密码">
+        </div>
+        <button onclick="checkPassword()">提交</button>
+        <p id="errorMsg" class="error"></p>
+        
+        <div id="hiddenContent" class="hidden-content">
+            <h3>我的世界基岩版服务器</h3>
+            <p>地址: XiaoLiu_-yV2n.aternos.me</p>
+            <p>端口号: 20417</p>
+        </div>
+    </div>
+
+    <script>
+        function checkPassword() {
+            const password = document.getElementById('passwordInput').value;
+            const errorMsg = document.getElementById('errorMsg');
+            const hiddenContent = document.getElementById('hiddenContent');
+            
+            if (password === 'XiaoLiu') {
+                hiddenContent.style.display = 'block';
+                errorMsg.textContent = '';
+            } else {
+                errorMsg.textContent = '密码错误，请重试';
+                hiddenContent.style.display = 'none';
+            }
+        }
+        
+        // 添加回车键提交功能
+        document.getElementById('passwordInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                checkPassword();
+            }
+        });
+    </script>
+</body>
+</html>
