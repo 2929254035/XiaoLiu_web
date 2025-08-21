@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信风格点对点聊天</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#07C160', // 微信绿色
+                        secondary: '#10B981',
+                        danger: '#EF4444',
+                        neutral: '#64748B',
+                        'chat-bg': '#E5E5E5', // 微信背景色
+                        'message-in': '#FFFFFF', // 收到的消息背景
+                        'message-out': '#95EC69'  // 发出的消息背景
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .scrollbar-thin {
+                scrollbar-width: thin;
+            }
+            .message-appear {
+                animation: messageAppear 0.3s ease-out;
+            }
+        }
+        
+        @keyframes messageAppear {
+            from { 
+                transform: translateY(20px); 
+                opacity: 0;
+            }
+            to { 
+                transform: translateY(0); 
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen">
+    <!-- 初始界面 -->
+    <div id="initial-screen" class="max-w-3xl mx-auto p-4 md:p-6">
+        <div class="bg-white rounded-xl shadow-lg p-6 md:p-8 mt-8">
+            <div class="text-center mb-8">
+                <h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold text-primary mb-2">微信风格聊天</h1>
+                <p class="text-neutral">无需服务器，直接在浏览器间通信</p>
+            </div>
+            
+            <div class="mb-6">
+                <label for="username" class="block text-sm font-medium text-gray-700 mb-1">您的名称</label>
+                <input type="text" id="username" 
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                    placeholder="请输入您的名称">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <button id="create-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2">
+                    <i class="fa fa-plus-circle"></i>
+                    <span>创建会话</span>
+                </button>
+                <button id="join-btn" class="bg-secondary hover:bg-secondary/90 text-white font-medium py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2">
+                    <i class="fa fa-sign-in"></i>
+                    <span>加入会话</span>
+                </button>
+            </div>
+            
+            <div class="text-xs text-neutral text-center">
+                提示：此应用使用WebRTC技术，消息直接在浏览器间传输，不会经过任何服务器
+            </div>
+        </div>
+    </div>
+    
+    <!-- 创建会话界面 -->
+    <div id="host-screen" class="hidden max-w-4xl mx-auto p-4 md:p-6">
+        <div class="bg-white rounded-xl shadow-lg p-6 md:p-8 mt-8">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-gray-800">创建会话</h2>
+                <button id="back-from-host" class="text-neutral hover:text-gray-800 transition-colors">
+                    <i class="fa fa-arrow-left"></i> 返回
+                </button>
+            </div>
+            
+            <div id="host-waiting" class="mb-6">
+                <p class="text-center text-neutral mb-4">正在准备会话，请稍候...</p>
+                <div class="flex justify-center">
+                    <div class="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                </div>
+            </div>
+            
+            <div id="host-ready" class="hidden">
+                <div class="text-center mb-6">
+                    <p class="text-gray-700 mb-3">请让对方扫描下方二维码，或复制会话信息</p>
+                    
+                    <div class="flex flex-col md:flex-row items-center justify-center gap-6 mb-6">
+                        <div class="bg-white p-2 rounded-lg shadow-md border border-gray-200">
+                            <div id="qrcode" class="w-48 h-48"></div>
+                        </div>
+                        
+                        <div class="w-full md:w-auto">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">会话信息</label>
+                            <div class="flex">
+                                <textarea id="host-sdp" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg bg-gray-50 text-sm font-mono overflow-auto max-h-40" readonly></textarea>
+                                <button id="copy-host-sdp" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 rounded-r-lg transition-colors">
+                                    <i class="fa fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">对方会话信息</label>
+                        <textarea id="client-sdp" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono overflow-auto min-h-40" placeholder="粘贴对方提供的会话信息"></textarea>
+                        <button id="submit-client-sdp" class="mt-2 bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-lg transition-all">
+                            建立连接
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="host-connection-status" class="hidden text-center py-3 px-4 rounded-lg mb-6 bg-gray-50 border border-gray-200">
+                <div class="flex items-center justify-center gap-2">
+                    <div class="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    <span id="host-status-text" class="text-neutral">正在等待对方响应...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 加入会话界面 -->
+    <div id="client-screen" class="hidden max-w-4xl mx-auto p-4 md:p-6">
+        <div class="bg-white rounded-xl shadow-lg p-6 md:p-8 mt-8">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-gray-800">加入会话</h2>
+                <button id="back-from-client" class="text-neutral hover:text-gray-800 transition-colors">
+                    <i class="fa fa-arrow-left"></i> 返回
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <p class="text-center text-gray-700 mb-4">扫描二维码加入</p>
+                    <div class="bg-gray-100 rounded-lg p-4 flex items-center justify-center min-h-[200px] relative">
+                        <video id="qr-scanner" class="max-w-full max-h-[180px] hidden"></video>
+                        <div id="scanner-placeholder" class="text-center">
+                            <i class="fa fa-qrcode text-4xl text-gray-300 mb-2"></i>
+                            <p class="text-sm text-neutral">相机将在这里启动</p>
+                        </div>
+                        <button id="start-scan" class="absolute bg-secondary hover:bg-secondary/90 text-white font-medium py-2 px-4 rounded-lg transition-all">
+                            启动扫描
+                        </button>
+                    </div>
+                </div>
+                
+                <div>
+                    <p class="text-center text-gray-700 mb-4">或手动输入会话信息</p>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">对方会话信息</label>
+                    <textarea id="host-sdp-client" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono overflow-auto min-h-[200px]" placeholder="粘贴对方提供的会话信息"></textarea>
+                    <button id="process-host-sdp" class="mt-2 bg-secondary hover:bg-secondary/90 text-white font-medium py-2 px-4 rounded-lg transition-all">
+                        处理会话信息
+                    </button>
+                </div>
+            </div>
+            
+            <div id="client-ready" class="hidden mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">您的会话信息（提供给对方）</label>
+                <div class="flex">
+                    <textarea id="client-sdp-client" class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg bg-gray-50 text-sm font-mono overflow-auto max-h-40" readonly></textarea>
+                    <button id="copy-client-sdp" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 rounded-r-lg transition-colors">
+                        <i class="fa fa-copy"></i>
+                    </button>
+                </div>
+                <p class="text-xs text-neutral mt-1 text-center">请将上方信息发送给创建会话的人</p>
+            </div>
+            
+            <div id="client-connection-status" class="hidden text-center py-3 px-4 rounded-lg mb-6 bg-gray-50 border border-gray-200">
+                <div class="flex items-center justify-center gap-2">
+                    <div class="w-3 h-3 border-2 border-secondary border-t-transparent rounded-full animate-spin"></div>
+                    <span id="client-status-text" class="text-neutral">正在建立连接...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 聊天界面 -->
+    <div id="chat-screen" class="hidden flex flex-col h-screen max-w-md mx-auto bg-white shadow-xl">
+        <!-- 聊天头部 -->
+        <header class="bg-primary text-white px-4 py-3 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <button id="back-from-chat" class="text-white hover:text-gray-200 transition-colors">
+                        <i class="fa fa-arrow-left"></i>
+                    </button>
+                    <div class="relative">
+                        <img id="peer-avatar" src="https://picsum.photos/200" alt="聊天对象头像" class="w-10 h-10 rounded-full object-cover">
+                        <span id="connection-indicator" class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" title="连接状态"></span>
+                    </div>
+                    <div>
+                        <h2 id="peer-name" class="font-medium">聊天对象</h2>
+                        <p id="connection-status-text" class="text-xs text-green-100">在线</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <button class="text-white hover:text-gray-200 transition-colors">
+                        <i class="fa fa-search"></i>
+                    </button>
+                    <button class="text-white hover:text-gray-200 transition-colors">
+                        <i class="fa fa-ellipsis-v"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <!-- 聊天消息区域 - 微信风格 -->
+        <main class="flex-1 overflow-y-auto p-4 bg-chat-bg scrollbar-thin" id="messages-container">
+            <div class="space-y-4">
+                <!-- 日期分隔线 -->
+                <div class="text-center">
+                    <span class="inline-block bg-gray-300 text-white text-xs px-3 py-1 rounded-full" id="date-indicator">
+                        今天
+                    </span>
+                </div>
+                
+                <!-- 消息会通过JS动态添加 -->
+            </div>
+        </main>
+        
+        <!-- 输入区域 - 微信风格 -->
+        <footer class="bg-gray-100 p-3 border-t border-gray-200">
+            <div class="flex items-center gap-2 mb-2">
+                <button class="text-gray-500 hover:text-primary p-2 transition-colors">
+                    <i class="fa fa-smile-o text-xl"></i>
+                </button>
+                <button class="text-gray-500 hover:text-primary p-2 transition-colors">
+                    <i class="fa fa-paperclip text-xl"></i>
+                </button>
+                <button class="text-gray-500 hover:text-primary p-2 transition-colors">
+                    <i class="fa fa-microphone text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="flex items-end gap-2">
+                <textarea id="message-input" placeholder="输入消息..." 
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all resize-none max-h-32"></textarea>
+                
+                <button id="send-message" class="bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-full transition-all flex items-center justify-center w-10 h-10">
+                    <i class="fa fa-paper-plane"></i>
+                </button>
+            </div>
+            
+            <div class="text-xs text-neutral mt-1 text-center hidden">
+                按Enter发送，Shift+Enter换行
+            </div>
+        </footer>
+    </div>
+    
+    <!-- 错误提示组件 -->
+    <div id="error-toast" class="fixed bottom-4 right-4 bg-danger text-white px-4 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-3 max-w-sm">
+        <i class="fa fa-exclamation-circle text-xl"></i>
+        <p id="error-message">错误消息</p>
+    </div>
+    
+    <!-- 成功提示组件 -->
+    <div id="success-toast" class="fixed bottom-4 right-4 bg-secondary text-white px-4 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-3 max-w-sm">
+        <i class="fa fa-check-circle text-xl"></i>
+        <p id="success-message">成功消息</p>
+    </div>
+
+    <script>
+        // 全局变量
+        let username = '';
+        let peerConnection = null;
+        let dataChannel = null;
+        let isHost = false;
+        let mediaStream = null;
+        
+        // ICE服务器配置
+        const iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ];
+        
+        // DOM元素
+        const initialScreen = document.getElementById('initial-screen');
+        const hostScreen = document.getElementById('host-screen');
+        const clientScreen = document.getElementById('client-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const usernameInput = document.getElementById('username');
+        const createBtn = document.getElementById('create-btn');
+        const joinBtn = document.getElementById('join-btn');
+        const backFromHostBtn = document.getElementById('back-from-host');
+        const backFromClientBtn = document.getElementById('back-from-client');
+        const backFromChatBtn = document.getElementById('back-from-chat');
+        const hostWaiting = document.getElementById('host-waiting');
+        const hostReady = document.getElementById('host-ready');
+        const hostSdpTextarea = document.getElementById('host-sdp');
+        const copyHostSdpBtn = document.getElementById('copy-host-sdp');
+        const clientSdpTextarea = document.getElementById('client-sdp');
+        const submitClientSdpBtn = document.getElementById('submit-client-sdp');
+        const hostConnectionStatus = document.getElementById('host-connection-status');
+        const hostStatusText = document.getElementById('host-status-text');
+        const qrScanner = document.getElementById('qr-scanner');
+        const scannerPlaceholder = document.getElementById('scanner-placeholder');
+        const startScanBtn = document.getElementById('start-scan');
+        const hostSdpClientTextarea = document.getElementById('host-sdp-client');
+        const processHostSdpBtn = document.getElementById('process-host-sdp');
+        const clientReady = document.getElementById('client-ready');
+        const clientSdpClientTextarea = document.getElementById('client-sdp-client');
+        const copyClientSdpBtn = document.getElementById('copy-client-sdp');
+        const clientConnectionStatus = document.getElementById('client-connection-status');
+        const clientStatusText = document.getElementById('client-status-text');
+        const messagesContainer = document.getElementById('messages-container');
+        const messageInput = document.getElementById('message-input');
+        const sendMessageBtn = document.getElementById('send-message');
+        const peerName = document.getElementById('peer-name');
+        const peerAvatar = document.getElementById('peer-avatar');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const connectionStatusText = document.getElementById('connection-status-text');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const errorToast = document.getElementById('error-toast');
+        const errorMessage = document.getElementById('error-message');
+        const successToast = document.getElementById('success-toast');
+        const successMessage = document.getElementById('success-message');
+        const dateIndicator = document.getElementById('date-indicator');
+        
+        // 初始化事件监听
+        function initEventListeners() {
+            // 初始界面
+            createBtn.addEventListener('click', handleCreateSession);
+            joinBtn.addEventListener('click', handleJoinSession);
+            
+            // 主机界面
+            backFromHostBtn.addEventListener('click', backToInitial);
+            copyHostSdpBtn.addEventListener('click', () => copyToClipboard(hostSdpTextarea, '会话信息已复制'));
+            submitClientSdpBtn.addEventListener('click', handleSubmitClientSDP);
+            
+            // 客户端界面
+            backFromClientBtn.addEventListener('click', backToInitial);
+            startScanBtn.addEventListener('click', startQRScan);
+            processHostSdpBtn.addEventListener('click', handleProcessHostSDP);
+            copyClientSdpBtn.addEventListener('click', () => copyToClipboard(clientSdpClientTextarea, '您的会话信息已复制'));
+            
+            // 聊天界面
+            sendMessageBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keydown', handleEnterKey);
+            messageInput.addEventListener('input', handleTyping);
+            backFromChatBtn.addEventListener('click', disconnect);
+            
+            // 自动调整输入框高度
+            messageInput.addEventListener('input', adjustTextareaHeight);
+        }
+        
+        // 显示错误提示
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorToast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                errorToast.classList.add('translate-y-20', 'opacity-0');
+            }, 5000);
+        }
+        
+        // 显示成功提示
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successToast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                successToast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+        
+        // 复制到剪贴板
+        function copyToClipboard(element, successMsg) {
+            element.select();
+            document.execCommand('copy');
+            showSuccess(successMsg);
+        }
+        
+        // 处理创建会话
+        function handleCreateSession() {
+            username = usernameInput.value.trim();
+            if (!username) {
+                showError('请输入您的名称');
+                return;
+            }
+            
+            isHost = true;
+            initialScreen.classList.add('hidden');
+            hostScreen.classList.remove('hidden');
+            
+            // 初始化PeerConnection
+            initPeerConnection();
+            
+            // 创建数据通道
+            dataChannel = peerConnection.createDataChannel('chat');
+            setupDataChannel(dataChannel);
+            
+            // 创建offer
+            createOffer();
+        }
+        
+        // 处理加入会话
+        function handleJoinSession() {
+            username = usernameInput.value.trim();
+            if (!username) {
+                showError('请输入您的名称');
+                return;
+            }
+            
+            isHost = false;
+            initialScreen.classList.add('hidden');
+            clientScreen.classList.remove('hidden');
+        }
+        
+        // 返回初始界面
+        function backToInitial() {
+            // 清理连接
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            if (dataChannel) {
+                dataChannel.close();
+                dataChannel = null;
+            }
+            
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            
+            // 重置界面
+            hostScreen.classList.add('hidden');
+            clientScreen.classList.add('hidden');
+            chatScreen.classList.add('hidden');
+            initialScreen.classList.remove('hidden');
+            
+            // 重置表单
+            hostSdpTextarea.value = '';
+            clientSdpTextarea.value = '';
+            hostSdpClientTextarea.value = '';
+            clientSdpClientTextarea.value = '';
+            qrScanner.classList.add('hidden');
+            scannerPlaceholder.classList.remove('hidden');
+            startScanBtn.classList.remove('hidden');
+            hostWaiting.classList.remove('hidden');
+            hostReady.classList.add('hidden');
+            hostConnectionStatus.classList.add('hidden');
+            clientReady.classList.add('hidden');
+            clientConnectionStatus.classList.add('hidden');
+        }
+        
+        // 初始化PeerConnection
+        function initPeerConnection() {
+            try {
+                peerConnection = new RTCPeerConnection({ iceServers });
+                
+                // 处理ICE候选者
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        // 更新SDP文本框
+                        if (isHost) {
+                            hostSdpTextarea.value = JSON.stringify(peerConnection.localDescription);
+                            updateQRCode(hostSdpTextarea.value);
+                        } else {
+                            clientSdpClientTextarea.value = JSON.stringify(peerConnection.localDescription);
+                        }
+                    }
+                };
+                
+                // 处理ICE连接状态变化
+                peerConnection.oniceconnectionstatechange = () => {
+                    console.log('ICE连接状态:', peerConnection.iceConnectionState);
+                    
+                    // 更新连接状态文本
+                    switch (peerConnection.iceConnectionState) {
+                        case 'checking':
+                            connectionStatusText.textContent = '连接中...';
+                            break;
+                        case 'connected':
+                        case 'completed':
+                            connectionStatusText.textContent = '在线';
+                            break;
+                        case 'failed':
+                            connectionStatusText.textContent = '连接失败';
+                            showError('连接失败，可能是网络环境限制，请尝试更换网络');
+                            break;
+                        case 'disconnected':
+                            connectionStatusText.textContent = '已断开';
+                            showError('连接已断开');
+                            break;
+                        case 'closed':
+                            connectionStatusText.textContent = '已关闭';
+                            break;
+                    }
+                };
+                
+                // 处理连接状态变化
+                peerConnection.onconnectionstatechange = () => {
+                    console.log('连接状态:', peerConnection.connectionState);
+                    
+                    if (peerConnection.connectionState === 'connected') {
+                        // 发送自己的用户名
+                        if (dataChannel && dataChannel.readyState === 'open') {
+                            dataChannel.send(JSON.stringify({
+                                type: 'username',
+                                value: username
+                            }));
+                        } else {
+                            // 数据通道尚未准备好，等待片刻再试
+                            setTimeout(() => {
+                                if (dataChannel && dataChannel.readyState === 'open') {
+                                    dataChannel.send(JSON.stringify({
+                                        type: 'username',
+                                        value: username
+                                    }));
+                                }
+                            }, 1000);
+                        }
+                        
+                        // 进入聊天界面
+                        setTimeout(enterChatScreen, 1000);
+                    } else if (peerConnection.connectionState === 'disconnected' || 
+                              peerConnection.connectionState === 'failed') {
+                        connectionIndicator.className = 'absolute bottom-0 right-0 w-3 h-3 bg-danger rounded-full border-2 border-white';
+                        connectionIndicator.title = '连接已断开';
+                        showError('与对方的连接已断开');
+                    }
+                };
+                
+                // 客户端监听数据通道
+                if (!isHost) {
+                    peerConnection.ondatachannel = (event) => {
+                        dataChannel = event.channel;
+                        setupDataChannel(dataChannel);
+                    };
+                }
+                
+            } catch (error) {
+                console.error('初始化PeerConnection失败:', error);
+                showError('初始化连接失败: ' + error.message);
+            }
+        }
+        
+        // 设置数据通道
+        function setupDataChannel(channel) {
+            // 增加状态日志
+            console.log('数据通道初始状态:', channel.readyState);
+            updateDataChannelStatus(channel.readyState);
+            
+            channel.onopen = () => {
+                console.log('数据通道已打开');
+                showSuccess('可以开始聊天了');
+                updateDataChannelStatus(channel.readyState);
+            };
+            
+            // 增加状态变化监听
+            channel.onstatechange = () => {
+                console.log('数据通道状态变化:', channel.readyState);
+                updateDataChannelStatus(channel.readyState);
+                
+                if (channel.readyState === 'closed') {
+                    showError('数据通道已关闭，请重新连接');
+                } else if (channel.readyState === 'connecting') {
+                    showSuccess('数据通道正在连接...');
+                }
+            };
+            
+            channel.onmessage = (event) => {
+                handleIncomingMessage(event.data);
+            };
+            
+            channel.onclose = () => {
+                console.log('数据通道已关闭');
+                updateDataChannelStatus(channel.readyState);
+                connectionIndicator.className = 'absolute bottom-0 right-0 w-3 h-3 bg-danger rounded-full border-2 border-white';
+                connectionIndicator.title = '数据通道已关闭';
+                showError('聊天连接已关闭');
+            };
+            
+            channel.onerror = (error) => {
+                console.error('数据通道错误:', error);
+                showError('消息传输错误: ' + error.message);
+            };
+        }
+        
+        // 更新数据通道状态显示
+        function updateDataChannelStatus(state) {
+            const statusTexts = {
+                'connecting': '连接中...',
+                'open': '在线',
+                'closing': '关闭中...',
+                'closed': '已关闭'
+            };
+            
+            connectionIndicator.title = statusTexts[state] || `状态: ${state}`;
+            connectionStatusText.textContent = statusTexts[state] || `状态: ${state}`;
+            
+            // 根据状态更新指示器颜色
+            if (state === 'open') {
+                connectionIndicator.className = 'absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white';
+            } else if (state === 'connecting') {
+                connectionIndicator.className = 'absolute bottom-0 right-0 w-3 h-3 bg-yellow-500 rounded-full border-2 border-white';
+            } else if (state === 'closing' || state === 'closed') {
+                connectionIndicator.className = 'absolute bottom-0 right-0 w-3 h-3 bg-danger rounded-full border-2 border-white';
+            }
+        }
+        
+        // 创建Offer
+        function createOffer() {
+            peerConnection.createOffer()
+                .then(offer => {
+                    return peerConnection.setLocalDescription(offer);
+                })
+                .then(() => {
+                    console.log('Offer创建成功');
+                    hostSdpTextarea.value = JSON.stringify(peerConnection.localDescription);
+                    updateQRCode(hostSdpTextarea.value);
+                    
+                    // 更新UI
+                    hostWaiting.classList.add('hidden');
+                    hostReady.classList.remove('hidden');
+                    showSuccess('会话已创建，请让对方加入');
+                })
+                .catch(error => {
+                    console.error('创建offer失败:', error);
+                    showError('创建会话失败: ' + error.message);
+                });
+        }
+        
+        // 更新QR码
+        function updateQRCode(text) {
+            try {
+                QRCode.toCanvas(document.getElementById('qrcode'), text, {
+                    width: 192,
+                    margin: 1,
+                    color: {
+                        dark: '#07C160',
+                        light: '#ffffff'
+                    }
+                }, (error) => {
+                    if (error) {
+                        console.error('生成QR码失败:', error);
+                        showError('生成QR码失败: ' + error.message);
+                    }
+                });
+            } catch (error) {
+                console.error('更新QR码失败:', error);
+                showError('更新QR码失败: ' + error.message);
+            }
+        }
+        
+        // 处理提交客户端SDP
+        function handleSubmitClientSDP() {
+            const clientSdp = clientSdpTextarea.value.trim();
+            if (!clientSdp) {
+                showError('请输入对方的会话信息');
+                return;
+            }
+            
+            try {
+                const sdp = JSON.parse(clientSdp);
+                hostReady.classList.add('hidden');
+                hostConnectionStatus.classList.remove('hidden');
+                
+                peerConnection.setRemoteDescription(new RTCSessionDescription(sdp))
+                    .then(() => {
+                        console.log('已设置远程描述');
+                        hostStatusText.textContent = '已收到对方信息，正在建立连接...';
+                    })
+                    .catch(error => {
+                        console.error('设置远程描述失败:', error);
+                        showError('处理对方信息失败: ' + error.message);
+                        hostReady.classList.remove('hidden');
+                        hostConnectionStatus.classList.add('hidden');
+                    });
+            } catch (error) {
+                console.error('解析SDP失败:', error);
+                showError('无效的会话信息: ' + error.message);
+            }
+        }
+        
+        // 启动QR扫描
+        function startQRScan() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showError('您的浏览器不支持相机访问');
+                return;
+            }
+            
+            // 请求相机权限
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(stream => {
+                    mediaStream = stream;
+                    qrScanner.srcObject = stream;
+                    qrScanner.classList.remove('hidden');
+                    scannerPlaceholder.classList.add('hidden');
+                    startScanBtn.classList.add('hidden');
+                    qrScanner.play();
+                    
+                    // 检测QR码
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    
+                    function scan() {
+                        if (qrScanner.readyState === qrScanner.HAVE_ENOUGH_DATA) {
+                            canvas.width = qrScanner.videoWidth;
+                            canvas.height = qrScanner.videoHeight;
+                            context.drawImage(qrScanner, 0, 0, canvas.width, canvas.height);
+                            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                            
+                            try {
+                                // 使用jsQR库解析QR码
+                                const code = jsQR(imageData.data, imageData.width, imageData.height);
+                                if (code) {
+                                    console.log('扫描到QR码内容:', code.data);
+                                    hostSdpClientTextarea.value = code.data;
+                                    processHostSDP();
+                                    
+                                    // 停止扫描和视频流
+                                    mediaStream.getTracks().forEach(track => track.stop());
+                                    qrScanner.classList.add('hidden');
+                                    return;
+                                }
+                            } catch (error) {
+                                console.error('QR码扫描错误:', error);
+                                showError('QR码扫描失败: ' + error.message);
+                            }
+                        }
+                        requestAnimationFrame(scan);
+                    }
+                    
+                    scan();
+                })
+                .catch(error => {
+                    console.error('获取相机失败:', error);
+                    showError('无法访问相机: ' + error.message);
+                });
+        }
+        
+        // 处理主机SDP
+        function handleProcessHostSDP() {
+            const hostSdp = hostSdpClientTextarea.value.trim();
+            if (!hostSdp) {
+                showError('请输入对方的会话信息');
+                return;
+            }
+            
+            try {
+                // 初始化PeerConnection
+                initPeerConnection();
+                
+                const sdp = JSON.parse(hostSdp);
+                clientConnectionStatus.classList.remove('hidden');
+                clientStatusText.textContent = '正在处理会话信息...';
+                
+                peerConnection.setRemoteDescription(new RTCSessionDescription(sdp))
+                    .then(() => {
+                        return peerConnection.createAnswer();
+                    })
+                    .then(answer => {
+                        return peerConnection.setLocalDescription(answer);
+                    })
+                    .then(() => {
+                        console.log('Answer创建成功');
+                        clientSdpClientTextarea.value = JSON.stringify(peerConnection.localDescription);
+                        clientConnectionStatus.classList.add('hidden');
+                        clientReady.classList.remove('hidden');
+                        showSuccess('请将您的会话信息发送给对方');
+                    })
+                    .catch(error => {
+                        console.error('处理host SDP失败:', error);
+                        showError('处理会话信息失败: ' + error.message);
+                        clientConnectionStatus.classList.add('hidden');
+                    });
+            } catch (error) {
+                console.error('解析host SDP失败:', error);
+                showError('无效的会话信息: ' + error.message);
+            }
+        }
+        
+        // 进入聊天界面
+        function enterChatScreen() {
+            hostScreen.classList.add('hidden');
+            clientScreen.classList.add('hidden');
+            chatScreen.classList.remove('hidden');
+            
+            // 更新日期
+            const now = new Date();
+            dateIndicator.textContent = now.toLocaleDateString('zh-CN', { 
+                month: 'long', 
+                day: 'numeric',
+                weekday: 'long'
+            });
+            
+            // 聚焦输入框
+            messageInput.focus();
+        }
+        
+        // 处理收到的消息
+        function handleIncomingMessage(data) {
+            try {
+                const message = JSON.parse(data);
+                
+                switch (message.type) {
+                    case 'username':
+                        // 收到对方用户名
+                        peerName.textContent = message.value;
+                        // 生成头像
+                        const avatarId = message.value.hashCode() % 100;
+                        peerAvatar.src = `https://picsum.photos/id/${Math.abs(avatarId)}/200`;
+                        peerAvatar.alt = `${message.value}的头像`;
+                        break;
+                        
+                    case 'message':
+                        // 收到聊天消息
+                        addMessageToDOM(message.text, message.username, false, message.timestamp);
+                        break;
+                        
+                    case 'typing':
+                        // 对方正在输入
+                        showTypingIndicator(true);
+                        break;
+                        
+                    case 'stopTyping':
+                        // 对方停止输入
+                        showTypingIndicator(false);
+                        break;
+                }
+            } catch (error) {
+                console.error('解析消息失败:', error);
+                // 尝试作为纯文本处理
+                addMessageToDOM(data, '未知用户', false);
+            }
+        }
+        
+        // 显示/隐藏正在输入指示器
+        function showTypingIndicator(show) {
+            // 检查是否已有正在输入指示器
+            let typingIndicator = document.querySelector('.typing-indicator');
+            
+            if (show) {
+                if (!typingIndicator) {
+                    // 创建新的正在输入指示器
+                    typingIndicator = document.createElement('div');
+                    typingIndicator.className = 'flex justify-start message-appear typing-indicator';
+                    typingIndicator.innerHTML = `
+                        <div class="bg-message-in rounded-lg px-3 py-2 max-w-[80%]">
+                            <div class="flex gap-1">
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                            </div>
+                        </div>
+                    `;
+                    messagesContainer.appendChild(typingIndicator);
+                }
+            } else if (typingIndicator) {
+                // 移除正在输入指示器
+                typingIndicator.remove();
+            }
+            
+            // 滚动到底部
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // 发送消息
+        function sendMessage() {
+            const messageText = messageInput.value.trim();
+            
+            // 检查数据通道状态
+            if (!dataChannel) {
+                showError('数据通道未初始化');
+                return;
+            }
+            
+            if (dataChannel.readyState !== 'open') {
+                showError(`消息发送失败：数据通道状态为${dataChannel.readyState}`);
+                console.log('数据通道状态:', dataChannel.readyState);
+                return;
+            }
+            
+            if (!messageText) {
+                showError('请输入消息内容');
+                return;
+            }
+            
+            try {
+                const timestamp = new Date().toISOString();
+                const messageData = JSON.stringify({
+                    type: 'message',
+                    text: messageText,
+                    username: username,
+                    timestamp: timestamp
+                });
+                
+                // 发送消息
+                dataChannel.send(messageData);
+                
+                // 在本地显示消息
+                addMessageToDOM(messageText, username, true, timestamp);
+                
+                // 清空输入框
+                messageInput.value = '';
+                adjustTextareaHeight();
+                
+                // 发送停止输入状态
+                dataChannel.send(JSON.stringify({
+                    type: 'stopTyping'
+                }));
+            } catch (error) {
+                showError('消息发送失败: ' + error.message);
+                console.error('发送消息错误:', error);
+            }
+        }
+        
+        // 处理正在输入状态
+        let typingTimeout = null;
+        function handleTyping() {
+            if (!dataChannel || dataChannel.readyState !== 'open') {
+                return;
+            }
+            
+            if (messageInput.value.trim() !== '') {
+                try {
+                    dataChannel.send(JSON.stringify({
+                        type: 'typing'
+                    }));
+                } catch (error) {
+                    console.error('发送正在输入状态失败:', error);
+                }
+                
+                // 清除之前的超时
+                if (typingTimeout) clearTimeout(typingTimeout);
+                
+                // 3秒后发送停止输入
+                typingTimeout = setTimeout(() => {
+                    if (messageInput.value.trim() === '') {
+                        try {
+                            dataChannel.send(JSON.stringify({
+                                type: 'stopTyping'
+                            }));
+                        } catch (error) {
+                            console.error('发送停止输入状态失败:', error);
+                        }
+                    }
+                }, 3000);
+            } else {
+                try {
+                    dataChannel.send(JSON.stringify({
+                        type: 'stopTyping'
+                    }));
+                } catch (error) {
+                    console.error('发送停止输入状态失败:', error);
+                }
+            }
+        }
+        
+        // 添加消息到DOM - 微信风格，新消息从底部出现
+        function addMessageToDOM(text, sender, isCurrentUser, timestamp) {
+            // 先移除可能存在的"正在输入"指示器
+            const typingIndicator = document.querySelector('.typing-indicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+            
+            const date = timestamp ? new Date(timestamp) : new Date();
+            const timeString = date.toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // 创建消息容器
+            const messageElement = document.createElement('div');
+            messageElement.className = `flex ${isCurrentUser ? 'justify-end' : 'justify-start'} message-appear`;
+            
+            // 创建消息气泡
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `rounded-lg px-4 py-3 max-w-[80%] ${
+                isCurrentUser ? 'bg-message-out rounded-tr-none' : 'bg-message-in rounded-tl-none'
+            }`;
+            
+            // 添加消息内容和时间
+            messageBubble.innerHTML = `
+                <p class="mb-1">${text}</p>
+                <span class="text-xs text-gray-500">${timeString}</span>
+            `;
+            
+            messageElement.appendChild(messageBubble);
+            
+            // 添加到消息容器的末尾（实现从底部出现的效果）
+            messagesContainer.appendChild(messageElement);
+            
+            // 自动滚动到底部
+            setTimeout(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 50);
+        }
+        
+        // 处理回车键
+        function handleEnterKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+        
+        // 调整文本框高度
+        function adjustTextareaHeight() {
+            messageInput.style.height = 'auto';
+            messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+        }
+        
+        // 断开连接
+        function disconnect() {
+            if (dataChannel) {
+                dataChannel.close();
+            }
+            
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            
+            backToInitial();
+            showSuccess('已断开连接');
+        }
+        
+        // 字符串哈希函数
+        String.prototype.hashCode = function() {
+            let hash = 0;
+            for (let i = 0; i < this.length; i++) {
+                const char = this.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // 转换为32位整数
+            }
+            return hash;
+        };
+        
+        // 页面加载完成后初始化
+        window.addEventListener('load', initEventListeners);
+    </script>
+</body>
+</html>
+    
